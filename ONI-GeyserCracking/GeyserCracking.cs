@@ -1,15 +1,14 @@
 ﻿using Harmony;
 using KSerialization;
+using PeterHan.PLib.Options;
 using System.Reflection;
 using TUNING;
 using UnityEngine;
 
 namespace HexiGeyserCracking {
-    public static class HexiGeyserCrackingMod
-    {
-        public static void OnLoad()
-        {
-            Strings.Add(Crackable.TitleID, "Crack Natural Feature");
+    public static class HexiGeyserCrackingMod {
+        public static void OnLoad() {
+			POptions.RegisterOptions(typeof(ConfigData));
 		}
 	}
 
@@ -22,73 +21,66 @@ namespace HexiGeyserCracking {
                 // for the delivery - needs to be here for persistent storage
                 Storage storage = __instance.FindOrAddComponent<Storage>();
                 storage.allowItemRemoval = false;
-                storage.capacityKg = Crackable.DELIVERY_REQUIRED;
+                storage.capacityKg = POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack;
                 storage.showInUI = true;
             }
         }
     }
 
-    public class Crackable : Workable, ISidescreenButtonControl, ISim1000ms {
-        // TODO: consider making cracking an over-time operation instead, with X kg of sulfur adding Y% output per 1s of usage
-        // TODO: consider removing the upper limit, with the operation efficiency based on the existing output (1/x perhaps)
+	public class CrackableButton : KMonoBehaviour {
+		public Crackable crackable;
 
+		protected override void OnSpawn() {
+			base.OnSpawn();
+			Subscribe((int)GameHashes.RefreshUserMenu, OnUserMenuRefresh);
+			Debug.Log($"[Geyser Cracking] Attached button: {crackable.maxCracked}/{crackable.markedForCracking}");
+		}
+
+		public void OnUserMenuRefresh(object obj) {
+			string text = crackable.maxCracked ? "Cracking Complete" : (crackable.markedForCracking ? "Cancel Cracking" : "Start Cracking");
+			string tooltip = crackable.maxCracked ? "This geyser cannot be improved further." : (crackable.markedForCracking ? "Cancel the existing job for improving this geyser." : "Start improving this geyser.");
+			KIconButtonMenu.ButtonInfo info = new KIconButtonMenu.ButtonInfo(
+				crackable.maxCracked ? "action_building_disabled" : "action_repair",
+				text,
+				OnToggleUserMenu,
+				Action.NumActions,
+				null,
+				null,
+				null,
+				tooltip
+			);
+			Game.Instance.userMenu.AddButton(crackable.geyser.gameObject, info);
+			Debug.Log($"[Geyser Cracking] Adding button: {text}");
+		}
+
+		public void OnToggleUserMenu() {
+			if (!crackable.maxCracked) {
+				if (DebugHandler.InstantBuildMode) {
+					if (crackable.chore != null) {
+						crackable.chore.Cancel("debug");
+						crackable.OnCracked(crackable.chore);
+						crackable.chore = null;
+					}
+					else crackable.OnCracked(null);
+				}
+				else {
+					crackable.markedForCracking = !crackable.markedForCracking;
+				}
+			}
+		}
+	}
+
+    public class Crackable : Workable, ISim1000ms {
         public Geyser geyser;
+		public CrackableButton button;
 
-        private bool maxCracked = false;
-        private Chore chore;
+        public bool maxCracked = false;
+        public Chore chore;
 
         [Serialize]
-        private bool markedForCracking; // true if an errand is queued
+        public bool markedForCracking; // true if an errand is queued
         [Serialize]
-        private float curP; // the current emission value, up to 4
-        [Serialize]
-        private bool removedStudyable; // true if the studyable component has been removed to allow this button to show up
-
-        // the amount of sulfur required per operation, in kg
-        public const float DELIVERY_REQUIRED = 100;
-
-        // the amount of additional output per operation, as a proportion of the max output
-        public const float BOOST_MIN = 0.15f;
-        public const float BOOST_MAX = 0.3f;
-        
-		public static string TitleID = "UI.UISIDESCREENS.HEXICRACKING.TITLE";
-        public string SidescreenTitleKey {
-            get {
-                return TitleID;
-            }
-        }
-
-        public string SidescreenStatusMessage {
-            get {
-                if (maxCracked) return "Researchers have improved this natural feature as much as possible.";
-                if (markedForCracking) return "A researcher is improving this natural feature.";
-                return "Send a researcher to improve this natural feature.";
-            }
-        }
-
-        public string SidescreenButtonText {
-            get {
-                if (maxCracked) return "CRACKING COMPLETE";
-                if (markedForCracking) return "CANCEL CRACKING";
-                return "PERFORM CRACKING";
-            }
-        }
-
-        public void OnSidescreenButtonPressed() {
-            if (maxCracked) return;
-            if (DebugHandler.InstantBuildMode) {
-                if (chore != null) {
-                    chore.Cancel("debug");
-                    OnCracked(chore);
-                    chore = null;
-                }
-                else OnCracked(null);
-            }
-            else {
-                markedForCracking = !markedForCracking;
-                Sim1000ms(0);
-            }
-        }
+        public float curP; // the current emission value
 
         protected override void OnPrefabInit() {
             base.OnPrefabInit();
@@ -110,23 +102,20 @@ namespace HexiGeyserCracking {
 
         protected override void OnSpawn() {
             base.OnSpawn();
-
-            // Debug.Log("Marked for cracking: " + markedForCracking);
-            // Debug.Log("Current percentage: " + curP);
-            // Debug.Log("Removed Studyable: " + removedStudyable);
-
-            // Debug.Log("Geyser: " + geyser);
+			
             GeyserConfigurator.GeyserInstanceConfiguration conf = geyser.configuration;
-            // Debug.Log("Config: " + conf);
             float maxOut = conf.geyserType.maxRatePerCycle;
             float curOut = conf.GetMassPerCycle();
             if (curP <= 0) curP = curOut / maxOut;
-            else SetStats(maxOut * curP);
+            else {
+				SetStats(maxOut * curP);
+				if (curP >= POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) maxCracked = true;
+			}
             Invoke("CheckStudyable", 1f);
             Sim1000ms(0);
         }
 
-        private static FieldInfo scaledRate = typeof(GeyserConfigurator.GeyserInstanceConfiguration).GetField("scaledRate", BindingFlags.Instance | BindingFlags.NonPublic);
+		private static FieldInfo scaledRate = typeof(GeyserConfigurator.GeyserInstanceConfiguration).GetField("scaledRate", BindingFlags.Instance | BindingFlags.NonPublic);
         // private static FieldInfo scaledIter = typeof(GeyserConfigurator.GeyserInstanceConfiguration).GetField("scaledIterationPercent", BindingFlags.Instance | BindingFlags.NonPublic);
         // private static FieldInfo scaledYear = typeof(GeyserConfigurator.GeyserInstanceConfiguration).GetField("scaledYearPercent", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -138,39 +127,28 @@ namespace HexiGeyserCracking {
         }
 
         public void OnCracked(Chore chore) {
-            // Debug.Log("Cracking complete for geyser: " + geyser.ToString());
             GeyserConfigurator.GeyserInstanceConfiguration conf = geyser.configuration;
-            // Debug.Log("Config: " + conf.ToString());
 
             // boost rate
-            // Debug.Log("Type: " + conf.geyserType.ToString());
             float maxOut = conf.geyserType.maxRatePerCycle;
             float curOut = conf.GetMassPerCycle();
-            // Debug.Log("Performing cracking...");
-            if (curOut < maxOut * 4) { // can go up to 4x max out
-                float rem = (maxOut * 4) - curOut;
+            if (curOut < maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) {
+                float rem = (maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) - curOut;
                 float remP = rem / maxOut;
-                // Debug.Log("remP: " + remP);
-                // add a random boost
-                float boostAmt = Random.Range(BOOST_MIN, BOOST_MAX);
-                // Debug.Log("Boosting: " + boostAmt);
+                float boostAmt = Random.Range(POptions.SingletonOptions<ConfigData>.Instance.MinPerCrack, POptions.SingletonOptions<ConfigData>.Instance.MaxPerCrack);
                 if (boostAmt > remP - 0.001f) {
-                    // max out
-                    // Debug.Log("Boost will max out.");
                     maxCracked = true;
-                    SetStats(maxOut * 4);
+                    SetStats(maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking);
                 }
                 else {
-                    // add random boost
-                    // Debug.Log("Performing boost.");
-                    SetStats(maxOut * (4 - remP + boostAmt));
+                    SetStats(maxOut * (POptions.SingletonOptions<ConfigData>.Instance.MaxCracking - remP + boostAmt));
                 }
             }
             curP = conf.GetMassPerCycle() / maxOut;
             geyser.GetComponent<Storage>().items.RemoveAll(it => true);
             this.chore = null;
             markedForCracking = false;
-            UpdateUI();
+			UpdateUI();
 
             // boost short timings
             // Debug.Log("Boosting short timing.");
@@ -186,23 +164,22 @@ namespace HexiGeyserCracking {
         public void CheckStudyable() {
             if (!KMonoBehaviour.isLoadingScene) {
                 Studyable s = geyser.GetComponent<Studyable>();
-                if (removedStudyable || (s != null && s.Studied)) {
-                    if (s != null) {
-                        s.Refresh();
-                        Object.Destroy(s);
-                    }
-                    removedStudyable = true;
+                if (s != null && s.Studied) {
+                    if (s != null) s.Refresh();
 
                     // add delivery task
                     ManualDeliveryKG deliver = geyser.gameObject.AddOrGet<ManualDeliveryKG>();
                     deliver.SetStorage(geyser.GetComponent<Storage>());
                     deliver.requestedItemTag = ElementLoader.FindElementByName("Sulfur").tag;
-                    deliver.refillMass = DELIVERY_REQUIRED;
-                    deliver.capacity = DELIVERY_REQUIRED;
+                    deliver.refillMass = POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack;
+                    deliver.capacity = POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack;
                     // deliver.choreTags = GameTags.ChoreTypes.ResearchChores;
                     deliver.choreTypeIDHash = Db.Get().ChoreTypes.ResearchFetch.IdHash;
-
-                    UpdateUI();
+					
+					button = geyser.gameObject.AddOrGet<CrackableButton>();
+					button.crackable = this;
+					UpdateUI();
+					
                     return;
                 }
             }
@@ -218,11 +195,12 @@ namespace HexiGeyserCracking {
 
         public void Sim1000ms(float dt) {
             if (KMonoBehaviour.isLoadingScene) return;
-            if (!geyser.FindComponent<ManualDeliveryKG>()) return;
+			if (geyser.FindComponent<Storage>() == null || geyser.FindComponent<ManualDeliveryKG>() == null) return;
+            if (!geyser.FindComponent<Storage>().showInUI) return;
             if (markedForCracking && !maxCracked) {
                 geyser.GetComponent<ManualDeliveryKG>().Pause(false, "Cracking requested");
                 if (chore == null) {
-                    if (geyser.GetComponent<Storage>().MassStored() >= DELIVERY_REQUIRED) {
+                    if (geyser.GetComponent<Storage>().MassStored() >= POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack) {
                         chore = new WorkChore<Crackable>(
 							Db.Get().ChoreTypes.Research, this, null, true,
 							new System.Action<Chore>(OnCracked), null, null, false,
@@ -234,8 +212,7 @@ namespace HexiGeyserCracking {
             else {
                 if (maxCracked) {
                     geyser.GetComponent<ManualDeliveryKG>().Pause(true, "Cracking complete");
-                    Object.Destroy(geyser.GetComponent<ManualDeliveryKG>());
-                    Object.Destroy(geyser.GetComponent<Storage>());
+					geyser.GetComponent<Storage>().showInUI = false;
                 }
                 else geyser.GetComponent<ManualDeliveryKG>().Pause(true, "Cracking cancelled");
                 if (chore != null) {
