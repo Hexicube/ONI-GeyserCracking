@@ -1,6 +1,7 @@
 ﻿using Harmony;
 using KSerialization;
 using PeterHan.PLib.Options;
+using System.Collections.Generic;
 using System.Reflection;
 using TUNING;
 using UnityEngine;
@@ -14,7 +15,13 @@ namespace HexiGeyserCracking {
 
     [HarmonyPatch(typeof(Geyser), "OnCmpEnable")]
     class Hexi_Geyser_Patch_OnSpawn {
+		private static List<Storage.StoredItemModifier> storageType = new List<Storage.StoredItemModifier>();
         static void Prefix(ref Geyser __instance) {
+			if (storageType.Count == 0) {
+				storageType.Add(Storage.StoredItemModifier.Insulate);
+				storageType.Add(Storage.StoredItemModifier.Seal);
+				storageType.Add(Storage.StoredItemModifier.Preserve);
+			}
             if (__instance.GetType() == typeof(Geyser)) {
                 __instance.FindOrAddComponent<Crackable>().geyser = __instance;
 
@@ -23,6 +30,7 @@ namespace HexiGeyserCracking {
                 storage.allowItemRemoval = false;
                 storage.capacityKg = POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack;
                 storage.showInUI = true;
+				storage.SetDefaultStoredItemModifiers(storageType);
             }
         }
     }
