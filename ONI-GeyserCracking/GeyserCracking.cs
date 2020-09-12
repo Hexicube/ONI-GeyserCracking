@@ -113,7 +113,7 @@ namespace HexiGeyserCracking {
 			
             GeyserConfigurator.GeyserInstanceConfiguration conf = geyser.configuration;
             float maxOut = conf.geyserType.maxRatePerCycle;
-            float curOut = conf.GetMassPerCycle();
+            float curOut = GetStats();
             if (curP <= 0) curP = curOut / maxOut;
             else {
 				SetStats(maxOut * curP);
@@ -134,12 +134,17 @@ namespace HexiGeyserCracking {
             ((ElementEmitter)emitter.GetValue(geyser)).outputElement.massGenerationRate = geyser.configuration.GetEmitRate();
         }
 
+		private float GetStats() {
+            GeyserConfigurator.GeyserInstanceConfiguration conf = geyser.configuration;
+			return (float)scaledRate.GetValue(conf);
+		}
+
         public void OnCracked(Chore chore) {
             GeyserConfigurator.GeyserInstanceConfiguration conf = geyser.configuration;
 
             // boost rate
             float maxOut = conf.geyserType.maxRatePerCycle;
-            float curOut = conf.GetMassPerCycle();
+            float curOut = GetStats();
             if (curOut < maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) {
                 float rem = (maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) - curOut;
                 float remP = rem / maxOut;
@@ -152,7 +157,7 @@ namespace HexiGeyserCracking {
                     SetStats(maxOut * (POptions.SingletonOptions<ConfigData>.Instance.MaxCracking - remP + boostAmt));
                 }
             }
-            curP = conf.GetMassPerCycle() / maxOut;
+            curP = GetStats() / maxOut;
             geyser.GetComponent<Storage>().items.RemoveAll(it => true);
             this.chore = null;
             markedForCracking = false;
