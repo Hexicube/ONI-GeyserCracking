@@ -35,7 +35,7 @@ namespace HexiGeyserCracking {
         }
     }
 
-	public class CrackableButton : KMonoBehaviour {
+	public class CrackableButton : KMonoBehaviour, IGameObjectEffectDescriptor {
 		public Crackable crackable;
 
 		protected override void OnSpawn() {
@@ -75,6 +75,28 @@ namespace HexiGeyserCracking {
 					crackable.markedForCracking = !crackable.markedForCracking;
 				}
 			}
+		}
+
+		public List<Descriptor> GetDescriptors(GameObject go) {
+			List<Descriptor> descriptorList = new List<Descriptor>();
+			if (crackable.button != null) {
+				float cur = crackable.curP * 100;
+				float max = POptions.SingletonOptions<ConfigData>.Instance.MaxCracking * 100;
+				string text, desc;
+				if (cur == max) {
+					text = "Cracking complete (" + GameUtil.GetFormattedPercent(max) + ")";
+					desc = "This geyser is at " + GameUtil.GetFormattedPercent(cur) + " efficiency, and cannot be improved further.";
+				}
+				else {
+					text = "Cracking: " + GameUtil.GetFormattedPercent(cur) + " / " + GameUtil.GetFormattedPercent(max);
+					desc = "This geyser is at " + GameUtil.GetFormattedPercent(cur) + " efficiency, and can be improved up to " + GameUtil.GetFormattedPercent(max) + ".";
+				}
+				descriptorList.Add(new Descriptor(
+					text,
+					desc
+				));
+			}
+			return descriptorList;
 		}
 	}
 
