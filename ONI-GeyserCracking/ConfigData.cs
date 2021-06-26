@@ -1,12 +1,11 @@
 ﻿using Newtonsoft.Json;
-using PeterHan.PLib;
 using PeterHan.PLib.Options;
 using System;
 
 namespace HexiGeyserCracking {
 	[ModInfo("Geyser Cracking"), ConfigFile("config.json", true)]
 	[Serializable]
-	public class ConfigData : POptions.SingletonOptions<ConfigData> {
+	public class ConfigData : SingletonOptions<ConfigData> {
 		[JsonProperty]
 		[Option("Max Cracking", "The maximum performance allowed for a Geyser"), Limit(1, 25)]
 		public float MaxCracking { get; set; } = 4f;

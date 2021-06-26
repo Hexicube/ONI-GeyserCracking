@@ -1,5 +1,6 @@
-﻿using Harmony;
+﻿using HarmonyLib;
 using KSerialization;
+using PeterHan.PLib.Core;
 using PeterHan.PLib.Options;
 using System.Collections.Generic;
 using System.Reflection;
@@ -7,28 +8,30 @@ using TUNING;
 using UnityEngine;
 
 namespace HexiGeyserCracking {
-    public static class HexiGeyserCrackingMod {
-        public static void OnLoad() {
-			POptions.RegisterOptions(typeof(ConfigData));
+    public sealed class HexiGeyserCrackingMod : KMod.UserMod2 {
+        public override void OnLoad(Harmony harmony) {
+			base.OnLoad(harmony);
+			PUtil.InitLibrary();
+			Debug.Log("[Geyser Cracking] Mod loaded");
 		}
 	}
-
-    [HarmonyPatch(typeof(Geyser), "OnCmpEnable")]
-    class Hexi_Geyser_Patch_OnSpawn {
+	
+	[HarmonyPatch(typeof(StateMachineComponent<Geyser.StatesInstance>), "OnCmpEnable")]
+    static class Hexi_Geyser_Patch_OnSpawn {
 		private static List<Storage.StoredItemModifier> storageType = new List<Storage.StoredItemModifier>();
-        static void Prefix(ref Geyser __instance) {
-			if (storageType.Count == 0) {
-				storageType.Add(Storage.StoredItemModifier.Insulate);
-				storageType.Add(Storage.StoredItemModifier.Seal);
-				storageType.Add(Storage.StoredItemModifier.Preserve);
-			}
-            if (__instance.GetType() == typeof(Geyser)) {
-                __instance.FindOrAddComponent<Crackable>().geyser = __instance;
+        static void Prefix(ref StateMachineComponent<Geyser.StatesInstance> __instance) {
+            if (__instance != null && __instance.GetType() == typeof(Geyser)) {
+				if (storageType.Count == 0) {
+					storageType.Add(Storage.StoredItemModifier.Insulate);
+					storageType.Add(Storage.StoredItemModifier.Seal);
+					storageType.Add(Storage.StoredItemModifier.Preserve);
+				}
+                __instance.FindOrAddComponent<Crackable>().geyser = (Geyser)__instance;
 
                 // for the delivery - needs to be here for persistent storage
                 Storage storage = __instance.FindOrAddComponent<Storage>();
                 storage.allowItemRemoval = false;
-                storage.capacityKg = POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack;
+                storage.capacityKg = SingletonOptions<ConfigData>.Instance.KgPerCrack;
                 storage.showInUI = true;
 				storage.SetDefaultStoredItemModifiers(storageType);
             }
@@ -81,7 +84,7 @@ namespace HexiGeyserCracking {
 			List<Descriptor> descriptorList = new List<Descriptor>();
 			if (crackable.button != null) {
 				float cur = crackable.curP * 100;
-				float max = POptions.SingletonOptions<ConfigData>.Instance.MaxCracking * 100;
+				float max = SingletonOptions<ConfigData>.Instance.MaxCracking * 100;
 				string text, desc;
 				if (cur == max) {
 					text = "Cracking complete (" + GameUtil.GetFormattedPercent(max) + ")";
@@ -139,7 +142,7 @@ namespace HexiGeyserCracking {
             if (curP <= 0) curP = curOut / maxOut;
             else {
 				SetStats(maxOut * curP);
-				if (curP >= POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) maxCracked = true;
+				if (curP >= SingletonOptions<ConfigData>.Instance.MaxCracking) maxCracked = true;
 			}
             Invoke("CheckStudyable", 1f);
             Sim1000ms(0);
@@ -167,16 +170,16 @@ namespace HexiGeyserCracking {
             // boost rate
             float maxOut = conf.geyserType.maxRatePerCycle;
             float curOut = GetStats();
-            if (curOut < maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) {
-                float rem = (maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking) - curOut;
+            if (curOut < maxOut * SingletonOptions<ConfigData>.Instance.MaxCracking) {
+                float rem = (maxOut * SingletonOptions<ConfigData>.Instance.MaxCracking) - curOut;
                 float remP = rem / maxOut;
-                float boostAmt = Random.Range(POptions.SingletonOptions<ConfigData>.Instance.MinPerCrack, POptions.SingletonOptions<ConfigData>.Instance.MaxPerCrack);
+                float boostAmt = Random.Range(SingletonOptions<ConfigData>.Instance.MinPerCrack, SingletonOptions<ConfigData>.Instance.MaxPerCrack);
                 if (boostAmt > remP - 0.001f) {
                     maxCracked = true;
-                    SetStats(maxOut * POptions.SingletonOptions<ConfigData>.Instance.MaxCracking);
+                    SetStats(maxOut * SingletonOptions<ConfigData>.Instance.MaxCracking);
                 }
                 else {
-                    SetStats(maxOut * (POptions.SingletonOptions<ConfigData>.Instance.MaxCracking - remP + boostAmt));
+                    SetStats(maxOut * (SingletonOptions<ConfigData>.Instance.MaxCracking - remP + boostAmt));
                 }
             }
             curP = GetStats() / maxOut;
@@ -206,8 +209,8 @@ namespace HexiGeyserCracking {
                     ManualDeliveryKG deliver = geyser.gameObject.AddOrGet<ManualDeliveryKG>();
                     deliver.SetStorage(geyser.GetComponent<Storage>());
                     deliver.requestedItemTag = ElementLoader.FindElementByName("Sulfur").tag;
-                    deliver.refillMass = POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack;
-                    deliver.capacity = POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack;
+                    deliver.refillMass = SingletonOptions<ConfigData>.Instance.KgPerCrack;
+                    deliver.capacity = SingletonOptions<ConfigData>.Instance.KgPerCrack;
                     // deliver.choreTags = GameTags.ChoreTypes.ResearchChores;
                     deliver.choreTypeIDHash = Db.Get().ChoreTypes.ResearchFetch.IdHash;
 					
@@ -235,7 +238,7 @@ namespace HexiGeyserCracking {
             if (markedForCracking && !maxCracked) {
                 geyser.GetComponent<ManualDeliveryKG>().Pause(false, "Cracking requested");
                 if (chore == null) {
-                    if (geyser.GetComponent<Storage>().MassStored() >= POptions.SingletonOptions<ConfigData>.Instance.KgPerCrack) {
+                    if (geyser.GetComponent<Storage>().MassStored() >= SingletonOptions<ConfigData>.Instance.KgPerCrack) {
                         chore = new WorkChore<Crackable>(
 							Db.Get().ChoreTypes.Research, this, null, true,
 							new System.Action<Chore>(OnCracked), null, null, false,
