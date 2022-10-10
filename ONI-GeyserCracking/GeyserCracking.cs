@@ -13,6 +13,7 @@ namespace HexiGeyserCracking {
 			base.OnLoad(harmony);
 			PUtil.InitLibrary();
 			Debug.Log("[Geyser Cracking] Mod loaded");
+			new POptions().RegisterOptions(this, typeof(ConfigData));
 		}
 	}
 	
@@ -203,7 +204,7 @@ namespace HexiGeyserCracking {
             if (!KMonoBehaviour.isLoadingScene) {
                 Studyable s = geyser.GetComponent<Studyable>();
                 if (s != null && s.Studied) {
-                    if (s != null) s.Refresh();
+                    s.Refresh();
 
                     // add delivery task
                     ManualDeliveryKG deliver = geyser.gameObject.AddOrGet<ManualDeliveryKG>();
@@ -211,7 +212,6 @@ namespace HexiGeyserCracking {
                     deliver.requestedItemTag = ElementLoader.FindElementByName("Sulfur").tag;
                     deliver.refillMass = SingletonOptions<ConfigData>.Instance.KgPerCrack;
                     deliver.capacity = SingletonOptions<ConfigData>.Instance.KgPerCrack;
-                    // deliver.choreTags = GameTags.ChoreTypes.ResearchChores;
                     deliver.choreTypeIDHash = Db.Get().ChoreTypes.ResearchFetch.IdHash;
 					
 					button = geyser.gameObject.AddOrGet<CrackableButton>();

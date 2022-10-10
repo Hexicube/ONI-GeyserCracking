@@ -3,7 +3,7 @@ using PeterHan.PLib.Options;
 using System;
 
 namespace HexiGeyserCracking {
-	[ModInfo("Geyser Cracking"), ConfigFile("config.json", true)]
+	[ModInfo("Geyser Cracking"), ConfigFile("config.json", true, true)]
 	[Serializable]
 	public class ConfigData : SingletonOptions<ConfigData> {
 		[JsonProperty]
